@@ -1,0 +1,14 @@
+= bigcsv
+
+bigcsv exists to conveniently parse and process large CSV files in a streaming
+fashion.
+
+It is a fairly thin wrapper around `encoding/csv` which allows reusing a parsing
+function as well as the option to process rows in parallel.
+
+== Usage
+
+[source,go]
+----
+include::bigcsv_test.go[lines="25..95"]
+----
