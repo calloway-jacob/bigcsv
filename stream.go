@@ -41,7 +41,8 @@ func (hs HTTPStream) Open() (io.ReadCloser, error) {
 
 // FileStream provides a reader for CSV processing from the filesystem.
 //
-// FileStream will only
+// FileStream will automatically decompress *.gz as gzip files. Everything else
+// will be treated as a CSV.
 type FileStream string
 
 func (fs FileStream) Open() (io.ReadCloser, error) {
@@ -64,4 +65,23 @@ func (fs FileStream) Open() (io.ReadCloser, error) {
 		r = gz
 	}
 	return r, nil
+}
+
+// ReadStream provides an adapter for any io.Reader.
+//
+// If the reader is no also an io.Closer, it will be wrapped using io.NopCloser.
+func ReadStream(r io.Reader) Stream {
+	return readerAdapter{r}
+}
+
+type readerAdapter struct {
+	io.Reader
+}
+
+func (ra readerAdapter) Open() (io.ReadCloser, error) {
+	rc, ok := ra.Reader.(io.ReadCloser)
+	if ok {
+		return rc, nil
+	}
+	return io.NopCloser(ra.Reader), nil
 }

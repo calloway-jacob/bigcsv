@@ -16,8 +16,10 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/calloway-jacob/bigcsv"
 )
@@ -123,4 +125,77 @@ func TestFileStream(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("Parsed and processed %d rows", processedRows.Load())
+}
+
+// This next test checks a timing issue I discovered in which CSV record reuse
+// is turned on (when a single worker is running), but a new record overwrites
+// a record in progress *before* waiting for the semaphore.
+
+type Number struct {
+	Integer int
+	String  string
+}
+
+func ParseNumber(row []string) (Number, error) {
+	n := Number{}
+	if len(row) < 2 {
+		return n, fmt.Errorf("got %d columns, need 2 at least", len(row))
+	}
+	var err error
+	n.Integer, err = strconv.Atoi(row[0])
+	n.String = row[1]
+	return n, err
+}
+
+// TestReadStream tests that parsing works with ReadStream. This test uses an
+// underlying strings.Buffer.
+//
+// It test the timing by waiting while processing, and making sure the row won't
+// be overwritten even when the csv.Reader is reusing rows.
+func TestReadStreamAndTiming(t *testing.T) {
+	parser, err := bigcsv.New[Number](bigcsv.ReadStream(strings.NewReader("1,one\n2,two\n3,three")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nmap := map[int]string{}
+	parser.Parse = ParseNumber
+	parser.OnError = func(err error) {
+		t.Fatal(err)
+	}
+	parser.OnData = func(n Number) error {
+		time.Sleep(time.Millisecond)
+		nmap[n.Integer] = n.String
+		return nil
+	}
+	if err = parser.Run(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if len(nmap) != 3 {
+		t.Fatalf("Incorrect number of records processed: %+v", nmap)
+	}
+}
+
+// TestParallelProcessing ensures that workers really are processing in
+// parallel.
+func TestParallelProcessing(t *testing.T) {
+	parser, err := bigcsv.New[Number](bigcsv.ReadStream(strings.NewReader("1,one\n2,two\n3,three\n4,four\n5,five\n6,six\n7,seven\n8,eight\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	parser.Parse = ParseNumber
+	parser.OnError = func(err error) {
+		t.Fatal(err)
+	}
+	parser.OnData = func(n Number) error {
+		time.Sleep(time.Millisecond * 100)
+		return nil
+	}
+	t1 := time.Now()
+	if err = parser.Run(context.Background(), 8); err != nil {
+		t.Fatal(err)
+	}
+	diff := time.Now().Sub(t1)
+	if diff > time.Millisecond*105 {
+		t.Fatalf("Time with 8 parallel workers: %v (should not be much more than 100ms)", diff)
+	}
 }

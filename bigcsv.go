@@ -87,21 +87,22 @@ func (p *Parser[T]) Run(ctx context.Context, workers int) error {
 
 LoopOverRows:
 	for ixRow := 1; ixRow > 0; ixRow++ { // NOTE: breaks on EOF intentionally
-		row, err := p.Reader.Read()
-		if errors.Is(err, io.EOF) {
-			break
-		} else if err != nil {
-			if p.OnError != nil {
-				p.OnError(fmt.Errorf("could not read line #%d: %w", ixRow, err))
-			}
-			continue
-		}
-
 		// Check each iteration whether the parser has been stopped.
 		select {
 		case <-ctx.Done():
 			break LoopOverRows
 		case sem <- struct{}{}:
+			row, err := p.Reader.Read()
+			if errors.Is(err, io.EOF) {
+				break LoopOverRows
+			} else if err != nil {
+				if p.OnError != nil {
+					p.OnError(fmt.Errorf("could not read line #%d: %w", ixRow, err))
+				}
+				<-sem
+				continue LoopOverRows
+			}
+
 			wg.Add(1)
 			go p.processRow(wg, sem, ixRow, row)
 		}
