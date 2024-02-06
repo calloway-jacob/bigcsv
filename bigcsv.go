@@ -1,3 +1,7 @@
+// Package bigcsv provides a simple API for processing large CSV data.
+//
+// It offers loading CSV via HTTP or the filesystem with gzip detection, or
+// directly from an io.Reader.
 package bigcsv
 
 import (
