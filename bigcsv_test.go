@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/calloway-jacob/bigcsv"
+	"github.com/typeduck/bigcsv"
 )
 
 // https://www.epa.gov/smartgrowth/national-walkability-index-user-guide-and-methodology
